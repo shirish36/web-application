@@ -1,195 +1,46 @@
-# Web Application with OAuth
+# Getting Started with Create React App
 
-This is a sample web application with OAuth-based authentication for the DevOps infrastructure.
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
-## Features
+## Available Scripts
 
-- OAuth 2.0 / OpenID Connect authentication
-- Responsive web interface
-- Integration with .NET API backend
-- Session management
-- Role-based access control
-- Docker containerization
+In the project directory, you can run:
 
-## Technology Stack
+### `npm start`
 
-- **Frontend**: React with TypeScript / ASP.NET Core MVC
-- **Authentication**: OAuth 2.0 (Google, Microsoft, etc.)
-- **State Management**: Redux Toolkit (for React) / ViewModels (for MVC)
-- **Styling**: Tailwind CSS / Bootstrap
-- **Build Tool**: Vite (for React) / MSBuild (for MVC)
+Runs the app in the development mode.\
+Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
-## Project Structure
+The page will reload if you make edits.\
+You will also see any lint errors in the console.
 
-### Option 1: React Frontend
-```
-web-application/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   ├── hooks/
-│   ├── services/
-│   ├── types/
-│   └── utils/
-├── public/
-├── package.json
-├── Dockerfile
-├── nginx.conf
-└── README.md
-```
+### `npm test`
 
-### Option 2: ASP.NET Core MVC
-```
-web-application/
-├── Controllers/
-├── Views/
-├── Models/
-├── Services/
-├── wwwroot/
-├── Program.cs
-├── Dockerfile
-└── WebApp.csproj
-```
+Launches the test runner in the interactive watch mode.\
+See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
-## Authentication Setup
+### `npm run build`
 
-### Google OAuth Setup
+Builds the app for production to the `build` folder.\
+It correctly bundles React in production mode and optimizes the build for the best performance.
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create OAuth 2.0 credentials
-3. Add authorized redirect URIs:
-   - `https://your-domain.com/auth/callback`
-   - `http://localhost:3000/auth/callback` (for development)
+The build is minified and the filenames include the hashes.\
+Your app is ready to be deployed!
 
-### Microsoft Azure AD Setup
+See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
 
-1. Go to [Azure Portal](https://portal.azure.com/)
-2. Register new application in Azure AD
-3. Configure redirect URIs and permissions
+### `npm run eject`
 
-## Environment Variables
+**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `OAUTH_CLIENT_ID` | OAuth Client ID | `123456789-abc.googleusercontent.com` |
-| `OAUTH_CLIENT_SECRET` | OAuth Client Secret | `your-secret-key` |
-| `API_BASE_URL` | Backend API URL | `https://api.example.com` |
-| `OAUTH_REDIRECT_URI` | OAuth redirect URI | `https://your-domain.com/auth/callback` |
+If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
 
-## Local Development
+Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
 
-### React Version
+You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
 
-```bash
-# Install dependencies
-npm install
+## Learn More
 
-# Start development server
-npm run dev
+You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
 
-# Build for production
-npm run build
-```
-
-### ASP.NET Core Version
-
-```bash
-# Restore dependencies
-dotnet restore
-
-# Run application
-dotnet run
-
-# Build for production
-dotnet build -c Release
-```
-
-## Docker Deployment
-
-### React Version
-
-```bash
-# Build image
-docker build -t web-app .
-
-# Run container
-docker run -p 8080:80 web-app
-```
-
-### ASP.NET Core Version
-
-```bash
-# Build image
-docker build -t web-app .
-
-# Run container
-docker run -p 8080:8080 web-app
-```
-
-## Features Implementation
-
-### Authentication Flow
-
-1. User clicks "Login"
-2. Redirect to OAuth provider
-3. User authenticates with provider
-4. Provider redirects back with authorization code
-5. Exchange code for access token
-6. Store user session
-7. Access protected resources
-
-### Protected Routes
-
-- Dashboard
-- Profile management
-- Admin panel (role-based)
-- Settings
-
-### API Integration
-
-- Authenticated API calls
-- Token refresh handling
-- Error handling and retry logic
-
-## Security Features
-
-- HTTPS enforcement
-- CSRF protection
-- XSS prevention
-- Secure session management
-- Input validation
-- Content Security Policy
-
-## Testing
-
-```bash
-# Unit tests
-npm test          # React
-dotnet test       # ASP.NET Core
-
-# E2E tests
-npm run test:e2e  # React with Playwright
-```
-
-## CI/CD
-
-The application includes GitHub Actions workflows for:
-- Build and test
-- Security scanning
-- Docker image building
-- Deployment to Cloud Run
-
-## Performance
-
-- Code splitting (React)
-- Lazy loading
-- Caching strategies
-- CDN integration
-- Image optimization
-
-## Monitoring
-
-- Application performance monitoring
-- User analytics
-- Error tracking
-- Health checks endpoint
+To learn React, check out the [React documentation](https://reactjs.org/).

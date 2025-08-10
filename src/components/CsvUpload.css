@@ -1,0 +1,186 @@
+﻿.csv-upload {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.upload-header {
+  text-align: center;
+  margin-bottom: 3rem;
+}
+
+.upload-header h1 {
+  color: #2c3e50;
+  margin-bottom: 0.5rem;
+}
+
+.upload-header p {
+  color: #7f8c8d;
+  font-size: 1.1rem;
+}
+
+.upload-container {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.drop-zone {
+  border: 3px dashed #bdc3c7;
+  border-radius: 8px;
+  padding: 3rem;
+  text-align: center;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.drop-zone:hover,
+.drop-zone.drag-over {
+  border-color: #3498db;
+  background-color: #f8f9fa;
+}
+
+.drop-zone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.upload-icon {
+  font-size: 4rem;
+  color: #bdc3c7;
+}
+
+.drop-zone h3 {
+  color: #2c3e50;
+  margin: 0;
+}
+
+.drop-zone p {
+  color: #7f8c8d;
+  margin: 0;
+}
+
+.file-select-btn {
+  background-color: #3498db;
+  color: white;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  text-decoration: none;
+}
+
+.file-select-btn:hover {
+  background-color: #2980b9;
+}
+
+.file-info {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 4px solid #3498db;
+}
+
+.file-info h3 {
+  color: #2c3e50;
+  margin-bottom: 1rem;
+}
+
+.file-details {
+  margin-bottom: 1.5rem;
+}
+
+.file-details p {
+  margin: 0.25rem 0;
+  color: #2c3e50;
+}
+
+.upload-btn {
+  background-color: #27ae60;
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.3s;
+}
+
+.upload-btn:hover:not(:disabled) {
+  background-color: #229954;
+}
+
+.upload-btn:disabled {
+  background-color: #bdc3c7;
+  cursor: not-allowed;
+}
+
+.upload-status {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.upload-status.success {
+  background-color: #d5f4e6;
+  color: #27ae60;
+  border: 1px solid #27ae60;
+}
+
+.upload-status.error {
+  background-color: #fadbd8;
+  color: #e74c3c;
+  border: 1px solid #e74c3c;
+}
+
+.upload-info {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.upload-info h3 {
+  color: #2c3e50;
+  margin-bottom: 1rem;
+}
+
+.upload-info ul {
+  color: #7f8c8d;
+  line-height: 1.6;
+}
+
+.upload-info li {
+  margin-bottom: 0.5rem;
+}
+
+.user-info-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e9ecef;
+  text-align: center;
+}
+
+.user-info-section p {
+  color: #7f8c8d;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .csv-upload {
+    padding: 1rem;
+  }
+  
+  .drop-zone {
+    padding: 2rem 1rem;
+  }
+  
+  .upload-icon {
+    font-size: 3rem;
+  }
+}
