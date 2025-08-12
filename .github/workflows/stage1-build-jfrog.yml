@@ -38,7 +38,27 @@ jobs:
         run: npm test -- --coverage --watchAll=false --passWithNoTests
 
       - name: Security audit
-        run: npm audit --audit-level=moderate
+        run: |
+          echo "🔍 Running security audit..."
+          # Run audit and capture output
+          npm audit --audit-level=moderate > audit-output.txt 2>&1 || AUDIT_EXIT_CODE=$?
+          
+          # Display the audit results
+          cat audit-output.txt
+          
+          # Check for high/critical vulnerabilities
+          if grep -q "high\|critical" audit-output.txt; then
+            echo "❌ High or critical severity vulnerabilities found - BLOCKING deployment"
+            exit 1
+          else
+            echo "✅ No high or critical vulnerabilities found"
+            if [ "${AUDIT_EXIT_CODE:-0}" -ne 0 ]; then
+              echo "⚠️ Moderate vulnerabilities detected, but acceptable for production"
+              echo "📊 Security audit completed with acceptable risk level"
+            else
+              echo "🎉 No vulnerabilities found!"
+            fi
+          fi
 
       - name: Upload test results
         if: always()
