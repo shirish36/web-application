@@ -1,0 +1,188 @@
+name: Stage 1 - Build and Push to JFrog
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  JFROG_DOCKER_REPO: shirish-docker
+  IMAGE_NAME: web-application
+
+jobs:
+  # Code Quality Gates (only for PRs and main/develop pushes)
+  quality-gates:
+    name: Code Quality & Testing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint --if-present
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run tests with coverage
+        run: npm test -- --coverage --watchAll=false --passWithNoTests
+
+      - name: Security audit
+        run: npm audit --audit-level=moderate
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results
+          path: coverage/
+
+  # Build and Push to JFrog (only on main/develop push, not PRs)
+  build-and-push-jfrog:
+    name: Build and Push to JFrog
+    runs-on: ubuntu-latest
+    needs: quality-gates
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    outputs:
+      image_tag: ${{ steps.build.outputs.image_tag }}
+      jfrog_image_url: ${{ steps.build.outputs.jfrog_image_url }}
+      environment: ${{ steps.env.outputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "image_tag=${{ github.run_number }}" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "image_tag=staging-${{ github.run_number }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_ACCESS_TOKEN: ${{ secrets.JF_ACCESS_TOKEN }}
+
+      - name: Test JFrog connection
+        run: jf rt ping
+
+      - name: Build Docker image
+        id: build
+        env:
+          IMAGE_TAG: ${{ steps.env.outputs.image_tag }}
+          JFROG_BASE_URL: ${{ secrets.JF_URL }}
+        run: |
+          echo "🔨 Building Docker image..."
+          
+          # Extract hostname from JF_URL (remove https:// if present)
+          JFROG_HOST=$(echo "$JFROG_BASE_URL" | sed 's|https\?://||')
+          JFROG_IMAGE_URL="${JFROG_HOST}/${{ env.JFROG_DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.image_tag }}"
+          
+          # Build image with JFrog CLI for better integration
+          jf docker build -t $JFROG_IMAGE_URL .
+          
+          # Also tag as latest for the environment
+          docker tag $JFROG_IMAGE_URL ${JFROG_HOST}/${{ env.JFROG_DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.environment }}-latest
+          
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "jfrog_image_url=$JFROG_IMAGE_URL" >> $GITHUB_OUTPUT
+
+      - name: Push to JFrog Artifactory
+        env:
+          IMAGE_TAG: ${{ steps.env.outputs.image_tag }}
+          JFROG_BASE_URL: ${{ secrets.JF_URL }}
+        run: |
+          echo "📤 Pushing to JFrog Artifactory..."
+          
+          # Extract hostname from JF_URL (remove https:// if present)
+          JFROG_HOST=$(echo "$JFROG_BASE_URL" | sed 's|https\?://||')
+          JFROG_IMAGE_URL="${JFROG_HOST}/${{ env.JFROG_DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.image_tag }}"
+          
+          # Push versioned image
+          jf docker push $JFROG_IMAGE_URL
+          
+          # Push latest tag for environment
+          jf docker push ${JFROG_HOST}/${{ env.JFROG_DOCKER_REPO }}/${{ env.IMAGE_NAME }}:${{ steps.env.outputs.environment }}-latest
+
+      - name: Collect and publish build info
+        env:
+          JFROG_CLI_BUILD_NAME: ${{ env.IMAGE_NAME }}-build
+          JFROG_CLI_BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          echo "📊 Collecting build information..."
+          
+          # Collect environment variables
+          jf rt build-collect-env
+          
+          # Collect Git information
+          jf rt build-add-git
+          
+          # Publish build info
+          jf rt build-publish
+
+      - name: Security scan with JFrog Xray
+        continue-on-error: true
+        run: |
+          echo "🔍 Running security scan..."
+          jf build-scan ${{ env.IMAGE_NAME }}-build ${{ github.run_number }}
+
+      - name: Build summary
+        run: |
+          echo "✅ Build completed successfully!"
+          echo "🏷️ Image Tag: ${{ steps.env.outputs.image_tag }}"
+          echo "📦 JFrog URL: ${{ steps.build.outputs.jfrog_image_url }}"
+          echo "🌍 Environment: ${{ steps.env.outputs.environment }}"
+
+  # Trigger next stage workflow
+  trigger-jfrog-to-gcr:
+    name: Trigger JFrog to GCR Transfer
+    runs-on: ubuntu-latest
+    needs: build-and-push-jfrog
+    if: success()
+    
+    steps:
+      - name: Trigger Stage 2 Workflow
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const response = await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'stage2-jfrog-to-gcr.yml',
+              ref: '${{ github.ref_name }}',
+              inputs: {
+                image_tag: '${{ needs.build-and-push-jfrog.outputs.image_tag }}',
+                jfrog_image_url: '${{ needs.build-and-push-jfrog.outputs.jfrog_image_url }}',
+                environment: '${{ needs.build-and-push-jfrog.outputs.environment }}',
+                triggered_by: 'stage1-build-jfrog',
+                source_commit: '${{ github.sha }}'
+              }
+            });
+            
+            console.log('✅ Triggered Stage 2 workflow:', response.status);
+            console.log('🎯 Workflow inputs:');
+            console.log('  - Image Tag:', '${{ needs.build-and-push-jfrog.outputs.image_tag }}');
+            console.log('  - Environment:', '${{ needs.build-and-push-jfrog.outputs.environment }}');
+
+      - name: Workflow summary
+        run: |
+          echo "🚀 Stage 1 Complete - Build and Push to JFrog"
+          echo "📦 Image: ${{ needs.build-and-push-jfrog.outputs.jfrog_image_url }}"
+          echo "🎯 Triggered Stage 2: JFrog to GCR transfer"
+          echo "⏭️ Next: Image will be transferred to GCR and deployed to Cloud Run"

@@ -1,0 +1,64 @@
+# Cloud Run service configuration for monitoring
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: web-application-service
+  namespace: default
+  labels:
+    app: web-application
+    environment: production
+    version: "1.0"
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/execution-environment: gen2
+spec:
+  template:
+    metadata:
+      labels:
+        app: web-application
+        environment: production
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+        run.googleapis.com/cpu-throttling: "false"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - name: web-application
+        image: gcr.io/gifted-palace-468618-q5/web-application:latest
+        ports:
+        - name: http1
+          containerPort: 80
+        env:
+        - name: NODE_ENV
+          value: production
+        - name: PORT
+          value: "80"
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+          requests:
+            cpu: "0.5"
+            memory: "256Mi"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+  traffic:
+  - percent: 100
+    latestRevision: true

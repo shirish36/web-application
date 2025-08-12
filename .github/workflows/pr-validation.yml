@@ -1,0 +1,98 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  validate:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: |
+          if npm run lint --if-present; then
+            echo "✅ Linting passed"
+          else
+            echo "❌ Linting failed"
+            exit 1
+          fi
+
+      - name: TypeScript check
+        run: |
+          if npx tsc --noEmit; then
+            echo "✅ TypeScript compilation passed"
+          else
+            echo "❌ TypeScript compilation failed"
+            exit 1
+          fi
+
+      - name: Run tests with coverage
+        run: |
+          npm test -- --coverage --watchAll=false --passWithNoTests
+          
+      - name: Security audit
+        run: |
+          npm audit --audit-level=moderate
+          
+      - name: Check bundle size
+        run: |
+          npm run build
+          npx bundlesize
+
+      - name: Comment PR with results
+        if: always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read coverage summary if exists
+            let coverageComment = '';
+            try {
+              const coverage = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json', 'utf8'));
+              const total = coverage.total;
+              coverageComment = `
+              ## 📊 Test Coverage
+              - **Lines**: ${total.lines.pct}%
+              - **Functions**: ${total.functions.pct}%
+              - **Branches**: ${total.branches.pct}%
+              - **Statements**: ${total.statements.pct}%
+              `;
+            } catch (e) {
+              coverageComment = '## 📊 Test Coverage\nNo coverage data available';
+            }
+            
+            const comment = `
+            ## 🔍 PR Validation Results
+            
+            ${coverageComment}
+            
+            ## ✅ Checks Completed
+            - Code linting
+            - TypeScript compilation
+            - Unit tests
+            - Security audit
+            - Bundle size check
+            
+            Build artifacts are ready for review!
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

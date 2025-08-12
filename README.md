@@ -1,6 +1,9 @@
-# Getting Started with Create React App
+# Web Application - Complete DevOps Pipeline
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+[![Build Status](https://github.com/shirish36/web-application/workflows/Complete%20CI/CD%20Pipeline/badge.svg)](https://github.com/shirish36/web-application/actions)
+[![Quality Gate Status](https://github.com/shirish36/web-application/workflows/Pull%20Request%20Validation/badge.svg)](https://github.com/shirish36/web-application/actions)
+
+A React TypeScript application with complete CI/CD pipeline for deployment to Google Cloud Platform using JFrog Artifactory and GitHub Actions.
 
 ## Available Scripts
 

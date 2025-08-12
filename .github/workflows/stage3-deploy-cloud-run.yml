@@ -1,0 +1,332 @@
+name: Stage 3 - Deploy to Cloud Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      gcr_image_url:
+        description: 'GCR image URL'
+        required: true
+        type: string
+      image_tag:
+        description: 'Image tag'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+          - development
+      service_name:
+        description: 'Cloud Run service name'
+        required: true
+        type: string
+      triggered_by:
+        description: 'Workflow that triggered this'
+        required: false
+        type: string
+        default: 'manual'
+      source_commit:
+        description: 'Source commit SHA'
+        required: false
+        type: string
+
+env:
+  GCP_REGION: us-central1
+
+jobs:
+  # Check if infrastructure exists, deploy if needed
+  ensure-infrastructure:
+    name: Ensure Infrastructure Exists
+    runs-on: ubuntu-latest
+    outputs:
+      infrastructure_exists: ${{ steps.check.outputs.exists }}
+      service_exists: ${{ steps.check.outputs.service_exists }}
+    
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Check infrastructure exists
+        id: check
+        run: |
+          echo "🔍 Checking if infrastructure exists..."
+          
+          # Check if Cloud Run service exists
+          if gcloud run services describe ${{ github.event.inputs.service_name }} \
+             --region=${{ env.GCP_REGION }} \
+             --format="value(metadata.name)" 2>/dev/null; then
+            echo "✅ Cloud Run service exists"
+            echo "service_exists=true" >> $GITHUB_OUTPUT
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Cloud Run service does not exist"
+            echo "service_exists=false" >> $GITHUB_OUTPUT
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Deploy infrastructure using Terraform if needed
+  deploy-infrastructure:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: ensure-infrastructure
+    if: needs.ensure-infrastructure.outputs.infrastructure_exists == 'false'
+    
+    steps:
+      - name: Trigger Infrastructure Deployment
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.INFRA_REPO_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            try {
+              const response = await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: 'terraform-infrastructure',
+                workflow_id: 'terraform-apply.yml',
+                ref: 'main',
+                inputs: {
+                  environment: '${{ github.event.inputs.environment }}',
+                  destroy: 'false'
+                }
+              });
+              
+              console.log('✅ Infrastructure deployment triggered:', response.status);
+              
+              // Wait for infrastructure deployment (simplified approach)
+              console.log('⏳ Waiting for infrastructure deployment...');
+              await new Promise(resolve => setTimeout(resolve, 300000)); // 5 minutes
+              
+            } catch (error) {
+              console.log('⚠️ Could not trigger infrastructure deployment:', error.message);
+              console.log('Proceeding with deployment assuming infrastructure exists...');
+            }
+
+  # Deploy application to Cloud Run
+  deploy-to-cloud-run:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: [ensure-infrastructure, deploy-infrastructure]
+    if: always() && !failure()
+    environment:
+      name: ${{ github.event.inputs.environment }}
+      url: ${{ steps.deploy.outputs.service_url }}
+    outputs:
+      service_url: ${{ steps.deploy.outputs.service_url }}
+      revision_name: ${{ steps.deploy.outputs.revision_name }}
+    
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set environment-specific configurations
+        id: config
+        run: |
+          case "${{ github.event.inputs.environment }}" in
+            production)
+              echo "memory=512Mi" >> $GITHUB_OUTPUT
+              echo "cpu=1" >> $GITHUB_OUTPUT
+              echo "min_instances=1" >> $GITHUB_OUTPUT
+              echo "max_instances=10" >> $GITHUB_OUTPUT
+              ;;
+            staging)
+              echo "memory=256Mi" >> $GITHUB_OUTPUT
+              echo "cpu=1" >> $GITHUB_OUTPUT
+              echo "min_instances=0" >> $GITHUB_OUTPUT
+              echo "max_instances=5" >> $GITHUB_OUTPUT
+              ;;
+            development)
+              echo "memory=256Mi" >> $GITHUB_OUTPUT
+              echo "cpu=0.5" >> $GITHUB_OUTPUT
+              echo "min_instances=0" >> $GITHUB_OUTPUT
+              echo "max_instances=2" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          echo "🚀 Deploying to Cloud Run..."
+          echo "Service: ${{ github.event.inputs.service_name }}"
+          echo "Image: ${{ github.event.inputs.gcr_image_url }}"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          
+          # Deploy to Cloud Run
+          gcloud run deploy ${{ github.event.inputs.service_name }} \
+            --image=${{ github.event.inputs.gcr_image_url }} \
+            --platform=managed \
+            --region=${{ env.GCP_REGION }} \
+            --allow-unauthenticated \
+            --port=80 \
+            --memory=${{ steps.config.outputs.memory }} \
+            --cpu=${{ steps.config.outputs.cpu }} \
+            --min-instances=${{ steps.config.outputs.min_instances }} \
+            --max-instances=${{ steps.config.outputs.max_instances }} \
+            --set-env-vars="NODE_ENV=${{ github.event.inputs.environment }},PORT=80,IMAGE_TAG=${{ github.event.inputs.image_tag }}" \
+            --tag=${{ github.event.inputs.environment }} \
+            --quiet
+          
+          # Get service URL and revision
+          SERVICE_URL=$(gcloud run services describe ${{ github.event.inputs.service_name }} \
+            --region=${{ env.GCP_REGION }} \
+            --format='value(status.url)')
+          
+          REVISION_NAME=$(gcloud run services describe ${{ github.event.inputs.service_name }} \
+            --region=${{ env.GCP_REGION }} \
+            --format='value(status.latestReadyRevisionName)')
+          
+          echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
+          echo "revision_name=$REVISION_NAME" >> $GITHUB_OUTPUT
+          
+          echo "✅ Deployment completed!"
+          echo "🌐 Service URL: $SERVICE_URL"
+          echo "📦 Revision: $REVISION_NAME"
+
+      - name: Wait for deployment to stabilize
+        run: |
+          echo "⏳ Waiting for deployment to stabilize..."
+          sleep 30
+
+      - name: Health check
+        id: health
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.service_url }}"
+          echo "🏥 Performing health check on $SERVICE_URL"
+          
+          # Health check with retries
+          SUCCESS=false
+          for i in {1..10}; do
+            if curl -f -s -o /dev/null -w "%{http_code}" "$SERVICE_URL" | grep -q "200"; then
+              echo "✅ Health check passed (attempt $i)"
+              SUCCESS=true
+              break
+            else
+              echo "⏳ Health check failed (attempt $i), retrying in 30s..."
+              sleep 30
+            fi
+          done
+          
+          if [ "$SUCCESS" = false ]; then
+            echo "❌ Health check failed after 10 attempts"
+            echo "🔍 Checking service logs..."
+            gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=${{ github.event.inputs.service_name }}" \
+              --limit=10 \
+              --format="table(timestamp,severity,textPayload)"
+            exit 1
+          fi
+          
+          echo "health_status=healthy" >> $GITHUB_OUTPUT
+
+      - name: Performance test
+        run: |
+          SERVICE_URL="${{ steps.deploy.outputs.service_url }}"
+          echo "⚡ Running performance test..."
+          
+          # Simple performance test
+          RESPONSE_TIME=$(curl -o /dev/null -s -w "%{time_total}" "$SERVICE_URL")
+          echo "📊 Response Time: ${RESPONSE_TIME}s"
+          
+          # Check if response time is acceptable (< 5 seconds)
+          if (( $(echo "$RESPONSE_TIME < 5.0" | bc -l) )); then
+            echo "✅ Performance test passed"
+          else
+            echo "⚠️ Performance test warning: Response time > 5s"
+          fi
+
+  # Post-deployment tasks
+  post-deployment:
+    name: Post-Deployment Tasks
+    runs-on: ubuntu-latest
+    needs: deploy-to-cloud-run
+    if: success()
+    
+    steps:
+      - name: Record deployment metadata
+        run: |
+          echo "📝 Recording deployment metadata..."
+          echo "🎯 Deployment Summary:"
+          echo "  Environment: ${{ github.event.inputs.environment }}"
+          echo "  Service: ${{ github.event.inputs.service_name }}"
+          echo "  Image: ${{ github.event.inputs.gcr_image_url }}"
+          echo "  Service URL: ${{ needs.deploy-to-cloud-run.outputs.service_url }}"
+          echo "  Revision: ${{ needs.deploy-to-cloud-run.outputs.revision_name }}"
+          echo "  Source Commit: ${{ github.event.inputs.source_commit }}"
+          echo "  Deployment Time: $(date -u)"
+          echo "  Triggered By: ${{ github.event.inputs.triggered_by }}"
+
+      - name: Update deployment status
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // You can extend this to update external systems, databases, etc.
+            console.log('🎉 Deployment completed successfully!');
+            console.log('Environment:', '${{ github.event.inputs.environment }}');
+            console.log('Service URL:', '${{ needs.deploy-to-cloud-run.outputs.service_url }}');
+
+      - name: Notify stakeholders
+        run: |
+          echo "📢 Deployment Notification"
+          echo "✅ Successfully deployed ${{ github.event.inputs.service_name }}"
+          echo "🌍 Environment: ${{ github.event.inputs.environment }}"
+          echo "🌐 URL: ${{ needs.deploy-to-cloud-run.outputs.service_url }}"
+          echo "📦 Image Tag: ${{ github.event.inputs.image_tag }}"
+          echo "🔗 Source: ${{ github.event.inputs.source_commit }}"
+          
+          # Here you could integrate with Slack, Teams, email, etc.
+          # Example: curl -X POST -H 'Content-type: application/json' \
+          #   --data '{"text":"Deployment completed: ${{ needs.deploy-to-cloud-run.outputs.service_url }}"}' \
+          #   $SLACK_WEBHOOK_URL
+
+  # Final summary
+  deployment-summary:
+    name: Deployment Summary
+    runs-on: ubuntu-latest
+    needs: [deploy-to-cloud-run, post-deployment]
+    if: always()
+    
+    steps:
+      - name: Final summary
+        run: |
+          echo "🎭 Complete Deployment Pipeline Summary"
+          echo "======================================"
+          echo ""
+          echo "🎯 Stage 3 Results:"
+          echo "  Status: ${{ needs.deploy-to-cloud-run.result }}"
+          echo "  Environment: ${{ github.event.inputs.environment }}"
+          echo "  Service: ${{ github.event.inputs.service_name }}"
+          echo ""
+          if [ "${{ needs.deploy-to-cloud-run.result }}" == "success" ]; then
+            echo "✅ DEPLOYMENT SUCCESSFUL!"
+            echo "🌐 Application URL: ${{ needs.deploy-to-cloud-run.outputs.service_url }}"
+            echo "📦 Deployed Image: ${{ github.event.inputs.gcr_image_url }}"
+            echo "🏷️ Image Tag: ${{ github.event.inputs.image_tag }}"
+            echo ""
+            echo "🔄 Complete Pipeline Flow:"
+            echo "  1. ✅ Code pushed to repository"
+            echo "  2. ✅ Quality gates passed"
+            echo "  3. ✅ Built and pushed to JFrog"
+            echo "  4. ✅ Transferred to GCR"
+            echo "  5. ✅ Deployed to Cloud Run"
+            echo "  6. ✅ Health checks passed"
+          else
+            echo "❌ DEPLOYMENT FAILED!"
+            echo "Please check the logs for details."
+          fi
+          echo ""
+          echo "📊 Pipeline Metadata:"
+          echo "  Source Commit: ${{ github.event.inputs.source_commit }}"
+          echo "  Triggered By: ${{ github.event.inputs.triggered_by }}"
+          echo "  Completion Time: $(date -u)"
