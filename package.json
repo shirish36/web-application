@@ -32,8 +32,7 @@
     "build:analyze": "npm run build && npx bundle-analyzer build/static/js/*.js",
     "docker:build": "docker build -t web-application .",
     "docker:run": "docker run -p 8080:80 web-application",
-    "docker:dev": "docker-compose --profile dev up",
-    "prepare": "husky install || true"
+    "docker:dev": "docker-compose --profile dev up"
   },
   "eslintConfig": {
     "extends": [
@@ -57,5 +56,10 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "overrides": {
+    "nth-check": "^2.1.1",
+    "postcss": "^8.4.31",
+    "webpack-dev-server": "^4.15.1"
   }
 }
